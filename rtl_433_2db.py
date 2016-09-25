@@ -11,7 +11,6 @@ import threading
 import Queue
 import mysql.connector
 from mysql.connector import errorcode
-from sensor import Sensor
 
 config = {
   'user': 'rtl433db',
@@ -84,8 +83,8 @@ def startsubprocess(command):
         else:
             print(err)
     reconnectdb=0#if 0 then no error or need ro be reconnected
-    #else:
-    #cnx.close()
+
+
     cursor = cnx.cursor()
     TABLES = {}
     TABLES['SensorData'] = (
@@ -120,16 +119,57 @@ def startsubprocess(command):
     while (not stdout_reader.eof() or not stderr_reader.eof()) and not nowTime > endTime:
 	# Show what we received from standard output.
         while not stdout_queue.empty():
-            #line = stdout_queue.get()
-            #print "Mika% " + repr(line)
 
             line = replace(stdout_queue.get())
-	    counter=0
+
             if ('WT450 sensor:'in line):
                 print '======== WT450 EVENT ========'
-		counter=counter+1
-		#store the line for later use
-		myLine[counter]=line
+		#Data starts after ": "
+		myData=line.split(': ')
+		#igrone item 0		
+		myData=myData[1]
+		#split to different types of information, e.g. Temperature, Channel		
+		myData=myData.split(', ')
+
+                for myText in myData:
+			print myText
+			myTemp=myText.split(' ')
+                        if 'House'in myText:
+				house=myTemp[2]
+				print house                        
+			elif 'Channel'in myText:
+                                channel=myTemp[1]
+                                print channel
+                        elif 'Battery'in myText:
+                                battery=myTemp[1]
+                                print "n"+battery+"n"
+				if battery=="OK":
+					battery=1
+				else:
+					battery=0
+                        elif 'Temperature'in myText:
+                                temperature=myTemp[1]
+                                print temperature
+                        elif 'Humidity'in myText:
+                                humidity=myTemp[1]
+                                print humidity
+		#######################
+                #last field, put in db
+                # UPDATE DB
+                #########################
+                if reconnectdb:
+                    cnx.reconnect()
+                    reconnectdb=0
+                try:
+                    sensordata = (house,channel,battery,temperature,humidity)
+                    cursor.execute(add_sensordata,sensordata)
+                    # Make sure data is committed to the database
+                    cnx.commit()
+                except:
+                    reconnectdb=1
+                    print("Error connecting to database")
+
+		
             else:
                 print "stdout: " + str(line) #Print stuff without processing
 
@@ -145,74 +185,7 @@ def startsubprocess(command):
         # Sleep a bit before asking the readers again.
 	# print("entering wait state")
         time.sleep(0.1)
-	nowTime=time.time()
-
-    #time is up or EOF, handle all lines and update to database
-    #create dictionary of sensors
-    sensor_data = {}
-    for line in myLine
-	    
-	    #Data starts after ": "
-	    myData=line.split(': ')
-	    #igrone item 0		
-	    myData=myData[1]
-	    #split to different types of information, e.g. Temperature, Channel		
-	    myData=myData.split(', ')
-
-	    for myText in myData:
-		    print myText
-		    myTemp=myText.split(' ')
-
-		    if 'House'in myText:
-			house=myTemp[2]
-			print house                        
-		    elif 'Channel'in myText:
-			channel=myTemp[1]
-			print channel
-	     	    elif 'Battery'in myText:
-			battery=myTemp[1]
-			print "n"+battery+"n"
-			if battery=="OK":
-				battery=1
-			else:
-				battery=0
-		    elif 'Temperature'in myText:
-			temperature=myTemp[1]
-			print temperature
-		    elif 'Humidity'in myText:
-			humidity=myTemp[1]
-			print humidity
-	    if isinstance(sensor_data[house + "_" + channel], Sensor):
-		#add new values
-		thisSensor=sensor_data[house + "_" + channel]
-		thisSensor.addTemp(temperature)
-		thisSensor.addHum(humidity)
-	    elif:
-		#create new object for this sensor
-		newSensor=Sensor(house,channel,temperature,humidity,battery)
-		newSensor.id=house + "_" + channel
-		#add sensor to dictionary
-		sensor_data[newSensor.id]=newSensor
-    #all lines handled
-    for id in sensor_data:
-	
-    #######################
-    #last field, put in db
-    # UPDATE DB
-    #########################
-    if reconnectdb:
-        cnx.reconnect()
-        reconnectdb=0
-    try:
-        sensordata = (house,channel,battery,temperature,humidity)
-        cursor.execute(add_sensordata,sensordata)
-        # Make sure data is committed to the database
-        cnx.commit()
-    except:
-        reconnectdb=1
-        print("Error connecting to database")
-
-		
+	#nowTime=time.time()
 
     # Let's be tidy and join the threads we've started.
     print ("Cleaning")
@@ -242,8 +215,8 @@ if __name__ == '__main__':
         #check if database is present, create tablesif no tables present
 
     #loop every 5 min
-    while 0==0:
-	startsubprocess("./rtl_433")
-	print("Sleeping 5 min")
-	time.sleep(300)
+    #while 0==0:
+    startsubprocess("./rtl_433")
+	#print("Sleeping 5 min")
+	#time.sleep(300)
     print("Closing down")
