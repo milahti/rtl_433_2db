@@ -11,11 +11,12 @@ import threading
 import Queue
 import mysql.connector
 from mysql.connector import errorcode
+from sensor import Sensor
 
 config = {
   'user': 'rtl433db',
-  'password': 'fWMqwmFNKbK9upjT',
-  'host': '192.168.0.8',
+  'password': 'my_password',
+  'host': 'localhost',
   'database': 'rtl433db',
   'raise_on_warnings': True,
 }
@@ -89,9 +90,11 @@ def startsubprocess(command):
     TABLES = {}
     TABLES['SensorData'] = (
         "CREATE TABLE `SensorData` ("
-        "  `sensor_id` INT UNSIGNED NOT NULL,"
-        "  `whatdata` varchar(50) NOT NULL,"
-        "  `data` float NOT NULL,"
+        "  `house` TINYINT(1) UNSIGNED NOT NULL,"
+	"  `channel` TINYINT(1) UNSIGNED NOT NULL,"
+	"  `battery` BOOLEAN NOT NULL DEFAULT 0,"
+        "  `temperature` DECIMAL(5,2) NOT NULL,"
+        "  `humidity` TINYINT(2),"
         "  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
         ") ENGINE =InnoDB DEFAULT CHARSET=latin1")
     for name, ddl in TABLES.iteritems():
@@ -106,200 +109,141 @@ def startsubprocess(command):
         else:
             print("OK")
     add_sensordata= ("INSERT INTO SensorData "
-                     "(sensor_id, whatdata, data) "
-                     "VALUES (%s, %s, %s)")
+                     "(house, channel, battery, temperature, humidity) "
+                     "VALUES (%s, %s, %s, %s, %s)")
 
     # do queue loop, entering data to database
     # Check the queues if we received some output (until there is nothing more to get).
-    while not stdout_reader.eof() or not stderr_reader.eof():
-        # Show what we received from standard output.
+    # add time limit for 1 min
+    nowTime = time.time()
+    endTime = time.time() + 61
+    while (not stdout_reader.eof() or not stderr_reader.eof()) and not nowTime > endTime:
+	# Show what we received from standard output.
         while not stdout_queue.empty():
-            line = stdout_queue.get()
-            print repr(line)
+            #line = stdout_queue.get()
+            #print "Mika% " + repr(line)
+
+            line = replace(stdout_queue.get())
+	    counter=0
+            if ('WT450 sensor:'in line):
+                print '======== WT450 EVENT ========'
+		counter=counter+1
+		#store the line for later use
+		myLine[counter]=line
+            else:
+                print "stdout: " + str(line) #Print stuff without processing
+
+
 
         # Show what we received from standard error.
-        status=0 # waiting for event, 1= Rain, 2=wind, 3=Temperature, 4=NewKaku
         while not stderr_queue.empty():
             line = replace(stderr_queue.get())
 
-            if ('Rain gauge event'in line):
-                print '======== RAIN EVENT ========'
-                status=1
+            print str(line) #Print stuff without processing
 
-            elif 'Wind event' in line:
-                print "======== WIND EVENT ========"
-                status=2
-            elif 'Temperature event' in line:
-                print "======== TEMP EVENT ========"
-                status=3
-            elif  'Sensor NewKaku event:' in line:
-                print "======== KAKU EVENT ========"
-                status=4
-            else:
-                if status==0:
-                    print str(line) #Print stuff without processing
-                if status==1:#rain
-                    if 'Device'in line:
-                        tmp,tmp=line.split('=')
-                        device=tmp
-                        print "Device " + device
-                    if 'Rainfall ='in line:
-                        tmp,tmp=line.split('=')
-                        rainfall=float(tmp)
-                        print "Rainfall " + str(rainfall)
-                        #######################
-                        #last field, put in db
-                        # UPDATE DB
-                        #########################
-                        if reconnectdb:
-                            print("Trying reconnecting to database")
-                            cnx.reconnect()
-                            reconnectdb=0
-                        
-                        try:
-                            sensordata = (device,'Rainsensor',rainfall)
-                            cursor.execute(add_sensordata,sensordata)
-                            # Make sure data is committed to the database
-                            cnx.commit()
-                        except:
-                            reconnectdb=1
-                            print("Error connecting to database")
-                if status==2:#wind
-                    if 'Device'in line:
-                        tmp,tmp=line.split('=')
-                        device=tmp
-                        print "Device " +device
-                    if 'Wind speed'in line:
-                        tmp,tmp,tmp,tmp,tmp,tmp,tmp,tmp1=line.split(' ')
-                        wspeed=float(tmp)
-                        print "Wspeed " + str(wspeed)
-                    if 'Wind gust'in line:
-                        tmp,tmp,tmp,tmp,tmp,tmp,tmp,tmp1=line.split(' ')
-                        wgust=float(tmp)
-                        print "Wgust " + str(wgust)
-                    if 'Direction'in line:
-                        tmp,tmp,tmp,tmp1=line.split(' ')
-                        direction=int(tmp)
-                        print "Direction " + str(direction)
-                        #######################
-                        #last field, put in db
-                        # UPDATE DB
-                        #########################
-                        try:
-                            if reconnectdb:
-                                print("Trying reconnecting to database")
-                                cnx.reconnect()
-                                reconnectdb=0
-                            sensordata = (device,'Windspeed',wspeed)
-                            cursor.execute(add_sensordata,sensordata)
-                            # Make sure data is committed to the database
-                            #cnx.commit()
-                            sensordata = (device,'Windgust',wgust)
-                            cursor.execute(add_sensordata,sensordata)
-                            sensordata = (device, 'Winddirection',direction)
-                            # Make sure data is committed to the database
-                            cnx.commit()
-                        except:
-                            print("Error connecting to database")
-                            reconnectdb=1
-                if status==3:#temp
-                    if 'Device'in line:
-                        tmp,tmp=line.split('=')
-                        device=tmp
-                        print "Device " + device
-                    if 'Temp ='in line:
-                        tmp,tmp=line.split('=')
-                        temp=float(tmp)
-                        print "Temp= " + str(temp)
-                    if 'Humidity'in line:
-                        tmp=1
-                        tmp,tmp=line.split('=')
-                        hum=int(tmp)
-                        print "Humidity= " + str(hum)
-                        #######################
-                        #last field, put in db
-                        # UPDATE DB
-                        #########################
-                        try:
-                            if reconnectdb:
-                                print("Trying reconnecting to database")
-                                cnx.reconnect()
-                                reconnectdb=0
-                            sensordata = (device,'Temperature',temp)
-                            cursor.execute(add_sensordata,sensordata)
-                            # Make sure data is committed to the database
-                            #cnx.commit()
-                            sensordata = (device,'Humidity',hum)
-                            cursor.execute(add_sensordata,sensordata)
-                            # Make sure data is committed to the database
-                            cnx.commit()
-                        except:
-                            print("Error connecting to database")
-                            reconnectdb=1
-                if status==4:#kaku
-                    if 'KakuId'in line:
-                        tmp,tmp,tmp,tmp1=line.split(' ')
-                        device=tmp
-                    if 'Unit'in line:
-                        tmp,tmp,tmp,tmp1=line.split(' ')
-                        unit=tmp
-                    if 'Command'in line:
-                        tmp,tmp=line.split('=')
-                        command=tmp.replace(' ', '')
-                        command=command.rstrip()
-                    if 'Dim ='in line:
-                        tmp,tmp=line.split('=')
-                        dim=tmp.replace(' ', '')
-                        dim=dim.rstrip()
-                    if 'Group Call ='in line:
-                        tmp,tmp=line.split('=')
-                        group=tmp.rstrip()
-                    if 'Dim Value ='in line:
-                        tmp,tmp=line.split('=')
-                        dimvalue=int(tmp.replace(' ', ''))
-                        #######################
-                        #last field, put in db
-                        # UPDATE DB
-                        #########################
-                        try:
-                            if reconnectdb:
-                                print("Trying reconnecting to database")
-                                cnx.reconnect()
-                                reconnectdb=0
-                            print("Kaku ID "+str(device)+" Unit "+unit+" Grp"+group+" Do "+command+" Dim "+dim)
-                            sensordata = (device,'Kaku '+unit+' Grp'+group+" Do "+command+ ' Dim '+ dim,dimvalue)
-                            cursor.execute(add_sensordata,sensordata)
-                            # Make sure data is committed to the database
-                            print("committing")
-                            cnx.commit()
-                        except mysql.connector.Error as err:
-                            if err.errno == errorcode.ER_TABLE_EXISTS_ERROR:
-                                print("Table seams to exist, no need to create it.")
-                            else:
-                                print(err.msg)
-                            reconnectdb=1
-                            print("Error connecting to database")
+
         # Sleep a bit before asking the readers again.
-        time.sleep(.1)
+	# print("entering wait state")
+        time.sleep(0.1)
+	nowTime=time.time()
+
+    #time is up or EOF, handle all lines and update to database
+    #create dictionary of sensors
+    sensor_data = {}
+    for line in myLine
+	    
+	    #Data starts after ": "
+	    myData=line.split(': ')
+	    #igrone item 0		
+	    myData=myData[1]
+	    #split to different types of information, e.g. Temperature, Channel		
+	    myData=myData.split(', ')
+
+	    for myText in myData:
+		    print myText
+		    myTemp=myText.split(' ')
+
+		    if 'House'in myText:
+			house=myTemp[2]
+			print house                        
+		    elif 'Channel'in myText:
+			channel=myTemp[1]
+			print channel
+	     	    elif 'Battery'in myText:
+			battery=myTemp[1]
+			print "n"+battery+"n"
+			if battery=="OK":
+				battery=1
+			else:
+				battery=0
+		    elif 'Temperature'in myText:
+			temperature=myTemp[1]
+			print temperature
+		    elif 'Humidity'in myText:
+			humidity=myTemp[1]
+			print humidity
+	    if isinstance(sensor_data[house + "_" + channel], Sensor):
+		#add new values
+		thisSensor=sensor_data[house + "_" + channel]
+		thisSensor.addTemp(temperature)
+		thisSensor.addHum(humidity)
+	    elif:
+		#create new object for this sensor
+		newSensor=Sensor(house,channel,temperature,humidity,battery)
+		newSensor.id=house + "_" + channel
+		#add sensor to dictionary
+		sensor_data[newSensor.id]=newSensor
+    #all lines handled
+    for id in sensor_data:
+	
+    #######################
+    #last field, put in db
+    # UPDATE DB
+    #########################
+    if reconnectdb:
+        cnx.reconnect()
+        reconnectdb=0
+    try:
+        sensordata = (house,channel,battery,temperature,humidity)
+        cursor.execute(add_sensordata,sensordata)
+        # Make sure data is committed to the database
+        cnx.commit()
+    except:
+        reconnectdb=1
+        print("Error connecting to database")
+
+		
 
     # Let's be tidy and join the threads we've started.
+    print ("Cleaning")
     try:
         cursor.close()
+	print("cursor.close() completed")
         cnx.close()
+	print("cnx.close() completed")
     except:
+	print("except")
         pass
-    stdout_reader.join()
-    stderr_reader.join()
+    #stdout_reader.join()
+    #print("stdout_reader.join completed")
+    #stderr_reader.join()
+    #print ("stderr completed")
 
     # Close subprocess' file descriptors.
-    process.stdout.close()
-    process.stderr.close()
-
+    print ("process.close()")
+    process.terminate()
+    print ("stdout_reader.close completed")
+    process.wait()
+    #process.stderr.close()
+    print ("Cleaned")
 
 if __name__ == '__main__':
     # The main flow:
         #check if database is present, create tablesif no tables present
 
-
-    startsubprocess("./rtl_433")
+    #loop every 5 min
+    while 0==0:
+	startsubprocess("./rtl_433")
+	print("Sleeping 5 min")
+	time.sleep(300)
     print("Closing down")
