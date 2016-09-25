@@ -154,8 +154,14 @@ def startsubprocess(command):
                 # UPDATE DB
                 #########################
                 if reconnectdb:
-                    cnx.reconnect()
-                    reconnectdb=0
+                    #need to reconnect as there was a problem on last update
+		    reconnectdb=0
+		    try:
+			print("Reconnecting to database")
+			cnx.reconnect()
+		    except mysql.connector.Error as err:
+			print "Error happened during reconnection @ %s" % time.ctime()
+			print(err.msg)
                 try:
                     sensordata = (house,channel,battery,temperature,humidity)
                     cursor.execute(add_sensordata,sensordata)
