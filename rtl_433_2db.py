@@ -124,6 +124,7 @@ def startsubprocess(command):
 
             if ('WT450 sensor:'in line):
                 print '======== WT450 EVENT ========'
+		print "Time : %s" % time.ctime()
 		#Data starts after ": "
 		myData=line.split(': ')
 		#igrone item 0		
@@ -135,24 +136,19 @@ def startsubprocess(command):
 			print myText
 			myTemp=myText.split(' ')
                         if 'House'in myText:
-				house=myTemp[2]
-				print house                        
+				house=myTemp[2]                        
 			elif 'Channel'in myText:
                                 channel=myTemp[1]
-                                print channel
                         elif 'Battery'in myText:
                                 battery=myTemp[1]
-                                print "n"+battery+"n"
 				if battery=="OK":
 					battery=1
 				else:
 					battery=0
                         elif 'Temperature'in myText:
                                 temperature=myTemp[1]
-                                print temperature
                         elif 'Humidity'in myText:
                                 humidity=myTemp[1]
-                                print humidity
 		#######################
                 #last field, put in db
                 # UPDATE DB
@@ -185,7 +181,7 @@ def startsubprocess(command):
         # Sleep a bit before asking the readers again.
 	# print("entering wait state")
         time.sleep(0.1)
-	#nowTime=time.time()
+	nowTime=time.time()
 
     # Let's be tidy and join the threads we've started.
     print ("Cleaning")
@@ -197,17 +193,13 @@ def startsubprocess(command):
     except:
 	print("except")
         pass
-    #stdout_reader.join()
-    #print("stdout_reader.join completed")
-    #stderr_reader.join()
-    #print ("stderr completed")
+
 
     # Close subprocess' file descriptors.
     print ("process.close()")
     process.terminate()
     print ("stdout_reader.close completed")
     process.wait()
-    #process.stderr.close()
     print ("Cleaned")
 
 if __name__ == '__main__':
@@ -215,8 +207,9 @@ if __name__ == '__main__':
         #check if database is present, create tablesif no tables present
 
     #loop every 5 min
-    #while 0==0:
-    startsubprocess("./rtl_433")
-	#print("Sleeping 5 min")
-	#time.sleep(300)
+    while 0==0:
+    	startsubprocess("./rtl_433")
+	print "sleeping 5 min : %s" % time.ctime()
+	time.sleep(300)
+	print "End : %s" % time.ctime()    	
     print("Closing down")
